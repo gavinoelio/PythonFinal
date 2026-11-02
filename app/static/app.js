@@ -17,6 +17,7 @@ function reset() {
   intentional = true; clearTimeout(retryTimer); clearInterval(heartbeat);
   if (socket) socket.close(); socket = null; session = null; latest = null;
   sessionStorage.removeItem(storageKey);
+  document.body.classList.remove("in-room");
   $("entry").hidden = false; $("lobby").hidden = true; $("events").replaceChildren();
 }
 function render(state) {
@@ -24,13 +25,17 @@ function render(state) {
   for (let i = 0; i < state.capacity; i++) {
     const player = state.players[i];
     const card = document.createElement("div"); card.className = "player";
+    card.dataset.slot = "0" + (i + 1) + " / CHANNEL";
+    const icon = document.createElement("div"); icon.className = "ship-icon"; icon.setAttribute("aria-hidden", "true");
     const name = document.createElement("strong"), status = document.createElement("span");
+    status.className = "player-status";
     if (player) {
       name.textContent = player.name + (player.id === session.player_id ? "（你）" : "") + (player.host ? " · 房主" : "");
       status.textContent = !player.connected ? "暂时断线 · 保留座位" : player.ready ? "已连接 · 已准备" : "已连接 · 等待准备";
       card.classList.toggle("is-ready", player.connected && player.ready);
-    } else { name.textContent = "空闲座位 " + (i + 1); status.textContent = "等待队友加入"; }
-    card.append(name, status); $("players").append(card);
+      card.classList.toggle("is-self", player.id === session.player_id);
+    } else { name.textContent = "等待指挥官"; status.textContent = "频道待接入"; card.classList.add("is-empty"); }
+    card.append(icon, name, status); $("players").append(card);
   }
   const self = state.players.find((p) => p.id === session.player_id);
   $("ready").textContent = self && self.ready ? "取消准备" : "准备";
@@ -40,6 +45,7 @@ function render(state) {
 }
 function connect() {
   intentional = false; $("entry").hidden = true; $("lobby").hidden = false;
+  document.body.classList.add("in-room");
   $("room-code").textContent = session.room_code; $("address").textContent = location.origin;
   setConnected(false); notice("正在连接房间…");
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/" + encodeURIComponent(session.room_code));

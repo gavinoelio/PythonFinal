@@ -3,22 +3,37 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PythonFinal · 联机大厅</title>
-<link rel="stylesheet" href="/static/style.css"><script src="/static/app.js" defer></script>
+<link rel="stylesheet" href="/static/style.css?v=2"><script src="/static/app.js?v=2" defer></script>
 </head>
 <body><main>
-<header><span class="eyebrow">DARK CAMPAIGN / LAN PROTOTYPE</span><h1>舰队集结</h1><p>同一网络，一间房间。邀请队友加入，确认你们已经连接。</p></header>
-<p id="notice" role="status" aria-live="polite">请先输入昵称。</p>
+<nav class="topbar" aria-label="游戏信息"><div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 36 12v16L20 37 4 28V12Z"/><path d="m20 10 9 17-9-4-9 4Z"/></svg><div>DARK CAMPAIGN<small>深空乱斗 · 指挥终端</small></div></div><div class="network-tag"><span class="status-dot"></span>LAN<span class="tag-detail"> / 局域网联机</span></div></nav>
+<header class="hero">
+<div class="hero-copy"><span class="eyebrow">FLEET ASSEMBLY / 舰队集结</span><h1>深空之中，<br>集结你的<span>舰队。</span></h1><p>建立通信，召集你的队友。<br>从同一片星域出发。</p><div class="hero-meta"><span>01 — 04 名指挥官</span><span>同一 Wi-Fi · 浏览器加入</span></div></div>
+<div class="orbital" aria-hidden="true"><div class="orbit-label">SECTOR MAP <span>24 / A—C</span></div>
+<svg class="radar" viewBox="0 0 400 360" fill="none">
+<defs><radialGradient id="radar-glow"><stop stop-color="#3dc5e5" stop-opacity=".15"/><stop offset="1" stop-color="#3dc5e5" stop-opacity="0"/></radialGradient><linearGradient id="sweep"><stop stop-color="#59dcff" stop-opacity=".18"/><stop offset="1" stop-color="#59dcff" stop-opacity="0"/></linearGradient></defs>
+<circle cx="200" cy="180" r="166" fill="url(#radar-glow)"/>
+<g class="radar-grid"><circle cx="200" cy="180" r="145"/><circle cx="200" cy="180" r="108"/><circle cx="200" cy="180" r="71"/><circle cx="200" cy="180" r="28"/><path d="M200 22v316M42 180h316M88 68l224 224M88 292 312 68M124 48l152 264M68 104l264 152M68 256l264-152M124 312 276 48"/></g>
+<circle class="orbit-dashes" cx="200" cy="180" r="159"/><path class="radar-sweep" d="M200 180 55 180a145 145 0 0 1 73-126Z" fill="url(#sweep)"/>
+<g class="radar-brackets"><path d="M42 70V35h35M323 35h35v35M358 290v35h-35M77 325H42v-35"/></g>
+<g class="map-labels"><text x="196" y="14">01</text><text x="369" y="184">07</text><text x="193" y="354">13</text><text x="13" y="184">19</text><text x="210" y="47">A</text><text x="210" y="84">B</text><text x="210" y="121">C</text></g>
+<g class="radar-ships"><path d="m122 80 7 19-7-4-7 4Z"/><path d="m282 218 7 19-7-4-7 4Z"/><path class="amber-ship" d="m165 260 7 19-7-4-7 4Z"/></g>
+<circle cx="200" cy="180" r="5" fill="#7de9f3"/><path d="M190 180h-8m28 0h8m-18-10v-8m0 28v8" stroke="#7de9f3"/>
+</svg><div class="orbit-bottom"><span>ORBITAL NETWORK</span><span>◈</span></div></div>
+</header>
+<div class="notice-bar"><span class="status-dot"></span><p id="notice" role="status" aria-live="polite">通信待命 · 请输入你的指挥官昵称。</p><span class="notice-end">COMMS</span></div>
 <section id="entry" class="panel">
-<label for="name">你的昵称</label><input id="name" maxlength="20" placeholder="例如：蓝色指挥官" autocomplete="nickname">
+<div class="identity-row"><div><span class="eyebrow">IDENTIFICATION / 01</span><h2>确认指挥官身份</h2><p>你的昵称将显示在队友的集结列表中。</p></div><div class="identity-input"><label for="name">指挥官昵称</label><input id="name" maxlength="20" placeholder="输入你的呼号" autocomplete="nickname"></div></div>
 <div class="entry-actions">
-<div><h2>建立集结点</h2><p>创建一个最多容纳四人的房间。</p><button id="create">创建房间</button></div>
-<div><h2>加入队友</h2><label for="code">六位房间号</label><input id="code" maxlength="6" placeholder="例如：AB12CD" autocomplete="off"><button id="join" class="secondary">加入房间</button></div>
+<div class="action-card create-card"><div class="card-heading"><span class="card-number">01</span><span class="eyebrow">CREATE A CHANNEL</span><span class="card-glyph" aria-hidden="true">⌖</span></div><h2>建立集结点</h2><p>开启独立通信频道，等待队友接入。</p><div class="channel-preview" aria-hidden="true"><span>CHANNEL ID</span><span>— — — — — —</span><small>创建后生成专属房间号</small></div><button id="create">创建房间 <span aria-hidden="true">↗</span></button></div>
+<div class="action-card join-card"><div class="card-heading"><span class="card-number">02</span><span class="eyebrow">JOIN YOUR FLEET</span><span class="card-glyph" aria-hidden="true">↳</span></div><h2>接入友方舰队</h2><p>已有队友建立频道？输入房间号会合。</p><div class="join-input"><label for="code">六位房间号</label><input id="code" maxlength="6" placeholder="AB12CD" autocomplete="off" spellcheck="false"></div><button id="join" class="secondary">加入房间 <span aria-hidden="true">→</span></button></div>
 </div></section>
 <section id="lobby" class="panel" hidden>
-<div class="room-heading"><div><span class="eyebrow">房间号</span><h2 id="room-code"></h2></div><button id="leave" class="secondary">离开房间</button></div>
-<p class="hint">让队友打开当前网页地址，再输入上方房间号。房间号本身不是网址。</p><p id="address" class="address"></p>
+<div class="room-heading"><div><span class="eyebrow">ACTIVE CHANNEL / 房间号</span><h2 id="room-code"></h2></div><button id="leave" class="secondary">离开房间 <span aria-hidden="true">↗</span></button></div>
+<div class="invite-strip"><div><span class="eyebrow">邀请队友接入</span><p class="hint">打开下方地址，再输入房间号。</p></div><p id="address" class="address"></p></div>
+<div class="section-heading"><h3>舰队席位</h3><span class="eyebrow">CREW MANIFEST / 04</span></div>
 <div id="players" class="players"></div>
 <div class="controls"><button id="ready">准备</button><button id="signal" class="secondary">发送联机测试信号</button></div>
-<p id="readiness" class="hint"></p><h3>连接记录</h3><ol id="events" aria-live="polite"></ol>
-</section><footer>当前版本仅验证多人联机。刷新可恢复座位；服务器重启后房间清空。</footer>
+<p id="readiness" class="hint"></p><div class="log-panel"><div class="section-heading"><h3>通信记录</h3><span class="eyebrow">TRANSMISSION LOG</span></div><ol id="events" aria-live="polite"></ol></div>
+</section><footer><span>◈ DARK CAMPAIGN <span class="footer-version">/ 联机原型</span></span><span>刷新可恢复座位 · 服务重启后房间清空</span></footer>
 </main></body></html>
