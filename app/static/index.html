@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PythonFinal · 联机大厅</title>
+<link rel="stylesheet" href="/static/style.css"><script src="/static/app.js" defer></script>
+</head>
+<body><main>
+<header><span class="eyebrow">DARK CAMPAIGN / LAN PROTOTYPE</span><h1>舰队集结</h1><p>同一网络，一间房间。邀请队友加入，确认你们已经连接。</p></header>
+<p id="notice" role="status" aria-live="polite">请先输入昵称。</p>
+<section id="entry" class="panel">
+<label for="name">你的昵称</label><input id="name" maxlength="20" placeholder="例如：蓝色指挥官" autocomplete="nickname">
+<div class="entry-actions">
+<div><h2>建立集结点</h2><p>创建一个最多容纳四人的房间。</p><button id="create">创建房间</button></div>
+<div><h2>加入队友</h2><label for="code">六位房间号</label><input id="code" maxlength="6" placeholder="例如：AB12CD" autocomplete="off"><button id="join" class="secondary">加入房间</button></div>
+</div></section>
+<section id="lobby" class="panel" hidden>
+<div class="room-heading"><div><span class="eyebrow">房间号</span><h2 id="room-code"></h2></div><button id="leave" class="secondary">离开房间</button></div>
+<p class="hint">让队友打开当前网页地址，再输入上方房间号。房间号本身不是网址。</p><p id="address" class="address"></p>
+<div id="players" class="players"></div>
+<div class="controls"><button id="ready">准备</button><button id="signal" class="secondary">发送联机测试信号</button></div>
+<p id="readiness" class="hint"></p><h3>连接记录</h3><ol id="events" aria-live="polite"></ol>
+</section><footer>当前版本仅验证多人联机。刷新可恢复座位；服务器重启后房间清空。</footer>
+</main></body></html>

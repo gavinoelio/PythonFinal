@@ -1,0 +1,1 @@
+"""LAN multiplayer connection prototype."""
