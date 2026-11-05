@@ -5,7 +5,7 @@
 第一次开发：
 
 ```sh
-git clone https://github.com/gavinoelio/PythonFinal.git
+git clone https://github.com/sd5913/PythonFinal.git
 cd PythonFinal
 git switch -c feature/your-task
 ```
