@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from . import game
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI(title="PythonFinal LAN Lobby")
@@ -43,12 +44,14 @@ class Room:
     revision: int = 0
     touched: float = field(default_factory=time.monotonic)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    game: Optional[dict] = None
 
-    def snapshot(self):
+    def snapshot(self, viewer=None):
         # Never serialize Player directly: the reconnect token is private.
         return {
             "type": "room_state", "room_code": self.code,
             "revision": self.revision, "capacity": 4,
+            "game": game.public_state(self, viewer),
             "players": [
                 {"id": p.id, "name": p.name, "ready": p.ready,
                  "connected": p.socket is not None, "host": i == 0}
@@ -94,14 +97,13 @@ async def broadcast(room, event=None):
     while room.players:
         room.revision += 1
         room.touched = time.monotonic()
-        payload = room.snapshot()
-        if event:
-            payload["event"] = event
-
         async def send(player):
             if player.socket is None:
                 return None  # The HTTP join is still waiting for its first socket.
             try:
+                payload = room.snapshot(player.id)
+                if event:
+                    payload["event"] = event
                 await asyncio.wait_for(player.socket.send_json(payload), timeout=2)
                 return None
             except Exception:
@@ -114,6 +116,7 @@ async def broadcast(room, event=None):
         for player in removed:
             room.players.pop(player.id, None)
             player.socket = None
+        game.reset_game(room)
         event = "、".join(p.name for p in removed) + " 已退出房间"
     rooms.pop(room.code, None)
 
@@ -124,6 +127,7 @@ async def remove_player(room, player):
         return
     del room.players[player.id]
     player.socket = None
+    game.reset_game(room)
     if not room.players:
         rooms.pop(room.code, None)
     else:
@@ -132,7 +136,7 @@ async def remove_player(room, player):
 
 @app.get("/")
 async def index():
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/health")
@@ -166,6 +170,8 @@ async def join_room(code: str, body: NameInput):
     async with room.lock:
         if rooms.get(room.code) is not room:
             raise HTTPException(404, "房间已关闭，请重新创建或加入。")
+        if room.game is not None:
+            raise HTTPException(409, "游戏已经开始，请等待房间返回备战大厅。")
         if len(room.players) >= 4:
             raise HTTPException(409, "房间已满，最多四人。")
         result = add_player(room, body.name)
@@ -238,10 +244,20 @@ async def connect(websocket: WebSocket, code: str):
                 if action == "ping":
                     await websocket.send_json({"type": "pong"})
                 elif action == "set_ready" and isinstance(message.get("ready"), bool):
+                    if room.game is not None:
+                        await websocket.send_json({"type": "error", "message": "对局中不能修改准备状态。"})
+                        continue
                     player.ready = message["ready"]
                     await broadcast(room)
                 elif action == "test_signal":
                     await broadcast(room, player.name + " 发送了联机测试信号 ✓")
+                elif isinstance(action, str) and action in game.GAME_ACTIONS:
+                    try:
+                        event = game.apply(room, player.id, message)
+                    except game.RuleError as error:
+                        await websocket.send_json({"type": "error", "message": str(error)})
+                    else:
+                        await broadcast(room, event)
                 elif action == "leave":
                     await remove_player(room, player)
                     await websocket.close(code=1000, reason="已离开房间")

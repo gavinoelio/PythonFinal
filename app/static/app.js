@@ -21,6 +21,9 @@ function reset() {
   if (oldSocket) oldSocket.close();
   setConnected(false);
   document.body.classList.remove("in-room");
+  document.body.classList.remove("playing");
+  $("game-view").hidden = true;
+  GameUI.reset();
   $("entry").hidden = false; $("lobby").hidden = true; $("events").replaceChildren();
 }
 function notifyLeave(identity) {
@@ -40,6 +43,13 @@ function leaveRoom(message, navigateBack = false) {
 }
 function render(state) {
   latest = state; $("players").replaceChildren();
+  document.body.classList.toggle("playing", Boolean(state.game));
+  $("lobby").hidden = Boolean(state.game);
+  $("game-view").hidden = !state.game;
+  GameUI.render(state, session.player_id, send);
+  const host = state.players.find((p) => p.host);
+  $("start-game").hidden = !host || host.id !== session.player_id;
+  $("start-game").disabled = state.players.length < 2 || !state.players.every((p) => p.connected && p.ready);
   for (let i = 0; i < state.capacity; i++) {
     const player = state.players[i];
     const card = document.createElement("div"); card.className = "player";
@@ -58,7 +68,7 @@ function render(state) {
   const self = state.players.find((p) => p.id === session.player_id);
   $("ready").textContent = self && self.ready ? "取消准备" : "准备";
   const allReady = state.players.length >= 2 && state.players.every((p) => p.connected && p.ready);
-  $("readiness").textContent = allReady ? "所有人已准备，联机验证完成。游戏功能将在后续接入。" : "已入座 " + state.players.length + "/4 · 至少两人连接并准备，可验证多人状态同步。";
+  $("readiness").textContent = allReady ? "所有人已准备，等待房主开始游戏。" : "已入座 " + state.players.length + "/4 · 至少两人连接并准备后，房主可以开始游戏。";
   if (state.event) log(state.event);
 }
 function connect() {
@@ -79,7 +89,7 @@ function connect() {
     if (socket !== ws) return;
     const data = JSON.parse(event.data);
     if (data.type === "room_state") { setConnected(true); notice("已连接 · 房间状态实时同步"); render(data); }
-    else if (data.type === "error") notice(data.message, true);
+    else if (data.type === "error") { notice(data.message, true); GameUI.error(data.message); }
   };
   ws.onclose = (event) => {
     if (socket !== ws) return;
@@ -118,6 +128,15 @@ $("ready").onclick = () => {
   if (self) send({type: "set_ready", ready: !self.ready});
 };
 $("signal").onclick = () => send({type: "test_signal"});
+$("start-game").onclick = () => send({type: "start_game"});
+$("settings-button").onclick = () => {
+  $("exit-game").disabled = !latest || !latest.game;
+  $("exit-room").disabled = !session;
+  $("settings-dialog").showModal();
+};
+$("continue-game").onclick = () => $("settings-dialog").close();
+$("exit-game").onclick = () => { $("settings-dialog").close(); send({type: "exit_game"}); };
+$("exit-room").onclick = () => { $("settings-dialog").close(); leaveRoom("已退出房间。", true); };
 $("leave").onclick = () => leaveRoom("已退出房间。", true);
 window.addEventListener("popstate", () => {
   if (session) leaveRoom("已退出房间。");
