@@ -3,12 +3,13 @@ import asyncio
 import secrets
 import string
 import time
+import anyio
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -19,6 +20,11 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 class NameInput(BaseModel):
     name: str = Field(min_length=1, max_length=20)
+
+
+class LeaveInput(BaseModel):
+    player_id: str
+    token: str
 
 
 @dataclass
@@ -52,6 +58,15 @@ class Room:
 
 
 rooms: Dict[str, Room] = {}
+PENDING_JOIN_TIMEOUT = 20
+pending_joins = set()
+
+
+async def expire_pending_join(room, player):
+    await asyncio.sleep(PENDING_JOIN_TIMEOUT)
+    async with room.lock:
+        if player.socket is None:
+            await remove_player(room, player)
 
 
 def get_room(code):
@@ -68,34 +83,51 @@ def add_player(room, name):
     player = Player(secrets.token_hex(8), secrets.token_urlsafe(32), name)
     room.players[player.id] = player
     room.touched = time.monotonic()
+    task = asyncio.create_task(expire_pending_join(room, player))
+    pending_joins.add(task)
+    task.add_done_callback(pending_joins.discard)
     return {"room_code": room.code, "player_id": player.id, "token": player.token}
 
 
 async def broadcast(room, event=None):
     # Caller holds room.lock; one slow/disconnected peer must not block the lobby.
-    room.revision += 1
-    room.touched = time.monotonic()
-    payload = room.snapshot()
-    if event:
-        payload["event"] = event
-
-    async def send(player):
-        if player.socket is None:
-            return False
-        try:
-            await asyncio.wait_for(player.socket.send_json(payload), timeout=2)
-            return False
-        except Exception:
-            player.socket = None
-            player.ready = False
-            return True
-
-    failed = await asyncio.gather(*(send(p) for p in room.players.values()))
-    if any(failed):
-        # Remaining clients immediately learn about peers lost during this send.
+    while room.players:
         room.revision += 1
+        room.touched = time.monotonic()
         payload = room.snapshot()
-        await asyncio.gather(*(send(p) for p in room.players.values()))
+        if event:
+            payload["event"] = event
+
+        async def send(player):
+            if player.socket is None:
+                return None  # The HTTP join is still waiting for its first socket.
+            try:
+                await asyncio.wait_for(player.socket.send_json(payload), timeout=2)
+                return None
+            except Exception:
+                return player
+
+        failed = await asyncio.gather(*(send(p) for p in room.players.values()))
+        removed = [p for p in failed if p is not None]
+        if not removed:
+            return
+        for player in removed:
+            room.players.pop(player.id, None)
+            player.socket = None
+        event = "、".join(p.name for p in removed) + " 已退出房间"
+    rooms.pop(room.code, None)
+
+
+async def remove_player(room, player):
+    # Idempotent across pagehide beacon, socket close and explicit leave.
+    if room.players.get(player.id) is not player:
+        return
+    del room.players[player.id]
+    player.socket = None
+    if not room.players:
+        rooms.pop(room.code, None)
+    else:
+        await broadcast(room, player.name + " 已退出房间")
 
 
 @app.get("/")
@@ -135,10 +167,29 @@ async def join_room(code: str, body: NameInput):
         if rooms.get(room.code) is not room:
             raise HTTPException(404, "房间已关闭，请重新创建或加入。")
         if len(room.players) >= 4:
-            raise HTTPException(409, "房间已满（含暂时断线的玩家），最多四人。")
+            raise HTTPException(409, "房间已满，最多四人。")
         result = add_player(room, body.name)
         await broadcast(room)
         return result
+
+
+@app.post("/api/rooms/{code}/leave", status_code=204)
+async def leave_room(code: str, body: LeaveInput):
+    room = rooms.get(code.upper())
+    if room is not None:
+        async with room.lock:
+            player = room.players.get(body.player_id)
+            if player is not None:
+                if not secrets.compare_digest(player.token, body.token):
+                    raise HTTPException(403, "身份校验失败。")
+                connection = player.socket
+                await remove_player(room, player)
+                if connection is not None:
+                    try:
+                        await asyncio.wait_for(connection.close(code=1000), timeout=2)
+                    except (RuntimeError, asyncio.TimeoutError):
+                        pass
+    return Response(status_code=204)
 
 
 @app.websocket("/ws/{code}")
@@ -192,25 +243,25 @@ async def connect(websocket: WebSocket, code: str):
                 elif action == "test_signal":
                     await broadcast(room, player.name + " 发送了联机测试信号 ✓")
                 elif action == "leave":
-                    del room.players[player.id]
-                    player.socket = None
+                    await remove_player(room, player)
                     await websocket.close(code=1000, reason="已离开房间")
-                    await broadcast(room, player.name + " 已离开")
-                    if not room.players:
-                        rooms.pop(room.code, None)
                     break
                 else:
                     await websocket.send_json({"type": "error", "message": "不支持的操作。"})
     except (WebSocketDisconnect, asyncio.TimeoutError, ValueError, RuntimeError):
         pass
     finally:
-        if room is not None and player is not None:
-            async with room.lock:
-                # Closing an older socket must not disconnect its replacement.
-                if player.socket is websocket:
-                    player.socket = None
-                    player.ready = False
-                    await broadcast(room, player.name + " 暂时断线")
+        # Complete removal even when the ASGI connection task is cancelled.
+        with anyio.CancelScope(shield=True):
+            if room is not None and player is not None:
+                async with room.lock:
+                    # Closing an older socket must not disconnect its replacement.
+                    if player.socket is websocket:
+                        await remove_player(room, player)
+            try:
+                await asyncio.wait_for(websocket.close(), timeout=2)
+            except (RuntimeError, asyncio.TimeoutError):
+                pass
 
 
 # Run with one Uvicorn worker; room state is process-local and intentionally temporary.

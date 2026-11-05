@@ -83,7 +83,7 @@ def test_wrong_token_cannot_take_existing_seat(client):
         assert error.value.code == 4401
 
 
-def test_disconnect_reconnect_and_leave(client):
+def test_disconnect_removes_last_player_and_revokes_identity(client):
     identity = create(client)
     path = "/ws/" + identity["room_code"]
     with client.websocket_connect(path) as ws:
@@ -93,12 +93,50 @@ def test_disconnect_reconnect_and_leave(client):
         assert ws.receive_json()["players"][0]["ready"]
     with client.websocket_connect(path) as ws:
         ws.send_json(identity)
-        player = ws.receive_json()["players"][0]
-        assert player["id"] == identity["player_id"]
-        assert player["connected"] and not player["ready"]
-        ws.send_json({"type": "leave"})
+        with pytest.raises(WebSocketDisconnect) as error:
+            ws.receive_json()
+        assert error.value.code == 4401
+    assert identity["room_code"] not in rooms
+
+
+def test_disconnect_broadcasts_removal_transfers_host_and_frees_seat(client):
+    first = create(client)
+    code = first["room_code"]
+    second = client.post("/api/rooms/" + code + "/join", json={"name": "B"}).json()
+    with client.websocket_connect("/ws/" + code) as b:
+        b.send_json(second)
+        b.receive_json()
+        with client.websocket_connect("/ws/" + code) as a:
+            a.send_json(first)
+            a.receive_json(); b.receive_json()
+        state = b.receive_json()
+        assert [p["id"] for p in state["players"]] == [second["player_id"]]
+        assert state["players"][0]["host"] and state["players"][0]["connected"]
+        for name in ["C", "D", "E"]:
+            assert client.post("/api/rooms/" + code + "/join", json={"name": name}).status_code == 201
+            b.receive_json()
+
+
+def test_pagehide_leave_is_authenticated_and_idempotent(client):
+    identity = create(client)
+    path = "/api/rooms/" + identity["room_code"] + "/leave"
+    with client.websocket_connect("/ws/" + identity["room_code"]) as ws:
+        ws.send_json(identity)
+        ws.receive_json()
+        assert client.post(path, json={**identity, "token": "wrong"}).status_code == 403
+        assert client.post(path, json=identity).status_code == 204
         with pytest.raises(WebSocketDisconnect):
             ws.receive_json()
+        assert client.post(path, json=identity).status_code == 204
+    assert identity["room_code"] not in rooms
+
+
+def test_unconnected_seat_expires(client, monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main, "PENDING_JOIN_TIMEOUT", 0)
+    identity = create(client)
+    # Another request lets the scheduled cleanup acquire the room lock.
+    client.get("/health")
     assert identity["room_code"] not in rooms
 
 
